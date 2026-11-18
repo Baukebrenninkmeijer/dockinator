@@ -1,0 +1,35 @@
+name: PR Title
+
+# PRs are squash-merged with the PR title as the commit subject, and Release derives
+# the version from that subject. An unconventional title is release-neutral, so
+# without this check a release silently never happens.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  title:
+    name: Conventional title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6.1.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # feat -> minor, fix/perf -> patch, "type!:" -> major; the rest ship no release.
+          types: |
+            build
+            chore
+            ci
+            docs
+            feat
+            fix
+            perf
+            refactor
+            revert
+            style
+            test

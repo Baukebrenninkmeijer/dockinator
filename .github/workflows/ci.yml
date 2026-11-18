@@ -3,14 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 jobs:
   build:
     runs-on: macos-15
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,8 +26,3 @@ jobs:
           path: |
             build/Dockinator.dmg
             build/Dockinator.zip
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/Dockinator.dmg build/Dockinator.zip --generate-notes

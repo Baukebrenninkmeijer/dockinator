@@ -1,0 +1,104 @@
+name: Release
+
+# Runs after CI passes on a push to main (a merged PR). The version bump comes from
+# the conventional-commit subject of what landed, which is the PR title because the
+# repo squash-merges with the PR title. A major bump is refused unless forced via
+# workflow_dispatch, and the refusal fails the run so a blocked release is visible.
+#
+# Triggered by workflow_run on CI rather than push: main, so it never races CI and
+# ships a commit CI is about to fail. CI also runs for pull requests, hence the
+# event and branch checks in the job gate.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      force_level:
+        description: "Force bump (major/minor/patch); blank = derive from commits. Required for a major."
+        required: false
+        default: ""
+        type: choice
+        options: ["", "major", "minor", "patch"]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag and publish
+    runs-on: macos-15
+    timeout-minutes: 20
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    steps:
+      - name: Refuse a dispatch that is not on main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Refusing release: dispatch ref is ${{ github.ref }}, not refs/heads/main."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # The exact commit CI validated, not whatever main points at now.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Compute version and tag
+        id: ver
+        env:
+          FORCE_LEVEL: ${{ inputs.force_level }}
+        run: |
+          set -euo pipefail
+          cur="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo v0.0.0)"
+          next="$(./scripts/next-version.sh $FORCE_LEVEL)"
+          sha="$(git rev-parse HEAD)"
+          echo "current=$cur next=${next:-none} force='${FORCE_LEVEL}' sha=$sha"
+          if [ -z "$next" ]; then
+            echo "No feat/fix/perf commits since $cur; nothing to release."
+            echo "released=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          cur_major="${cur#v}"; cur_major="${cur_major%%.*}"
+          next_major="${next#v}"; next_major="${next_major%%.*}"
+          if [ "$next_major" -gt "$cur_major" ] && [ -z "$FORCE_LEVEL" ]; then
+            echo "::error::Refusing automatic major bump $cur -> $next. Re-run Release via workflow_dispatch with force_level=major to confirm, or minor/patch to ship it lower."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            tag_sha="$(git rev-parse "refs/tags/$next^{commit}")"
+            if [ "$tag_sha" = "$sha" ]; then
+              echo "$next already points at $sha; already released."
+              echo "released=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            echo "::error::$next already exists at $tag_sha, but this run releases $sha. Delete the stale tag or release the tagged commit."
+            exit 1
+          fi
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      # Build before tagging, so a broken build never leaves a tag without a release.
+      - name: Build app and DMG
+        if: steps.ver.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.ver.outputs.tag }}
+        run: |
+          VERSION="${VERSION#v}" ./scripts/build-app.sh
+          cd build && ditto -c -k --keepParent Dockinator.app Dockinator.zip
+
+      - name: Tag and create GitHub Release
+        if: steps.ver.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" build/Dockinator.dmg build/Dockinator.zip \
+            --title "Dockinator ${TAG}" --generate-notes --verify-tag
