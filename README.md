@@ -69,6 +69,19 @@ Only a bottom Dock can move between displays. A Dock on the left or right stays 
 
 Dockinator does not move the Dock back for you. macOS ignores synthetic pointer pushes for Dock moves. If the Dock ends up on a blocked display (after waking, or after you pick a new home), the panel tells you, and one push at the bottom of your home display brings it back.
 
+## Releases
+
+Every merge to `main` can cut a release. PRs are squash-merged with the PR title as the commit subject, so the title has to be a [conventional commit](https://www.conventionalcommits.org):
+
+| PR title | Release |
+| --- | --- |
+| `fix: ...`, `perf: ...` | patch, `0.1.0` → `0.1.1` |
+| `feat: ...` | minor, `0.1.0` → `0.2.0` |
+| `feat!: ...` | major. Refused unless confirmed by running the Release workflow by hand with `force_level=major` |
+| `docs:`, `chore:`, `ci:`, `refactor:`, ... | none |
+
+After CI passes on `main`, the Release workflow builds the DMG, tags the commit and publishes a GitHub Release.
+
 ## Credit
 
 Inspired by [DockLock](https://github.com/JulyIghor/DockLockPro). This is an independent, open-source take on the same idea.
