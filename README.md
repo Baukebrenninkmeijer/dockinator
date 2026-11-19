@@ -52,11 +52,14 @@ The Command Line Tools are enough to build. `swift test` needs full Xcode.
 | **Accessibility** (recommended) | Lets Dockinator catch every pointer move with an event tap, and see which display the Dock is on. Without it, Dockinator falls back to polling the pointer, which needs no permission. |
 | **Start at login** | Optional. |
 
-A locally built copy is signed ad hoc, so macOS forgets the Accessibility grant after each rebuild. Set `SIGN_ID` to a signing identity to keep it:
+By default a local build is signed ad hoc, and that signature changes on every build, so macOS forgets the Accessibility grant each time. To keep the grant, create a self-signed signing identity once. `build-app.sh` uses it automatically from then on:
 
 ```bash
-SIGN_ID="Apple Development: Your Name" ./scripts/build-app.sh install
+./scripts/make-signing-cert.sh          # adds "Dockinator Local" to your login keychain
+./scripts/build-app.sh install          # signed with it; grant Accessibility once more
 ```
+
+To use another identity instead, set `SIGN_ID`, for example `SIGN_ID="Apple Development: Your Name"`.
 
 ## How it works
 
