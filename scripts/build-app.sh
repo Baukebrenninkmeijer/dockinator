@@ -43,8 +43,13 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-# Ad-hoc signature. Set SIGN_ID to a real identity to keep the Accessibility grant across rebuilds.
+# An ad-hoc signature changes every build, so macOS drops the Accessibility grant.
+# A stable identity keeps it: SIGN_ID, else "Dockinator Local" (scripts/make-signing-cert.sh).
+if [[ -z "${SIGN_ID:-}" ]] && security find-certificate -c "Dockinator Local" >/dev/null 2>&1; then
+  SIGN_ID="Dockinator Local"
+fi
 codesign --force --deep --sign "${SIGN_ID:--}" "$APP"
+echo "signed with ${SIGN_ID:-ad-hoc}"
 
 mkdir -p build/dmg
 cp -R "$APP" build/dmg/
